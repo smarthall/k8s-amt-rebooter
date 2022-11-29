@@ -145,7 +145,7 @@ def node_pending_reboot(name, body, stopped, meta, **kwargs):
         attempts = int(meta.get("annotations", {}).get(reboot_count_annotation, 0))
 
         if should_reboot(meta, attempts):
-            reboot_node(name, body)
+            reboot_node(name)
 
             attempts += 1
 
@@ -160,7 +160,7 @@ def node_pending_reboot(name, body, stopped, meta, **kwargs):
                                 + failed_node_timeout_seconds
                                 + (reboot_backoff_seconds * attempts)
                             ),
-                            reboot_count_annotation: attempts,
+                            reboot_count_annotation: str(attempts),
                         }
                     }
                 },
