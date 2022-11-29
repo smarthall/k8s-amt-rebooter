@@ -1,11 +1,15 @@
 import time
-
-import kopf
 import logging
 
+import kopf
+import amt.client
+import amt.wsman
+import yaml
 
+
+config_filename = 'config.yaml'
 reboot_scheduled_annotation = "me.danielhall.amt-rebooter/reboot-at"
-failed_node_timeout_seconds = 30
+failed_node_timeout_seconds = 300
 
 
 def is_ready(status, **_):
@@ -44,8 +48,35 @@ def should_reboot(metadata):
     return get_reboot_time(metadata) < time.time()
 
 
-def reboot_node(name, body):
-    pass
+def lookup_node_config(name):
+    config = {}
+    with open(config_filename, 'r') as f:
+        config = yaml.safe_load(f)
+    
+    return config.get(name, None)
+
+def reboot_node(name):
+    node_config = lookup_node_config(name)
+
+    if node_config is None:
+        logging.info(f'Could not find "{name}" in configuration, ignoring...')
+        return
+
+    if len({'address', 'password', 'username'}.intersection(set(node_config.keys()))) != 3:
+        logging.error(f'Invalid configuration for node "{name}", ignoring...')
+        return
+
+    client = amt.client.Client(node_config.get('address'), node_config.get('password'), node_config.get('username'))
+
+    power_state = client.power_status()
+    if power_state != '2':
+        friendly_power_state = amt.wsman.friendly_power_state(power_state)
+        logging.warn(f'Node "{name}" found in unexpected power state "{friendly_power_state}", not rebooting...')
+        return
+
+    client.power_cycle()
+
+    logging.info(f"Node {name} has been power cycled")
 
 
 @kopf.on.startup()
@@ -94,7 +125,6 @@ def node_back_online(name, patch, **kwargs):
 def node_pending_reboot(name, body, stopped, meta, **kwargs):
     while not stopped:
         if should_reboot(meta):
-            logging.info(f"Node {name} is about to be rebooted")
             reboot_node(name, body)
             # TODO: Don't trigger the reboot repetitively
 
