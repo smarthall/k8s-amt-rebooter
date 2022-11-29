@@ -27,12 +27,13 @@ def is_ready(status, **_):
 def is_not_ready(status, **_):
     return not is_ready(status)
 
-def past_reboot(new, **_):
+
+def past_reboot(metadata, **_):
     return False
 
 
-def should_reboot(new, **_):
-    return is_not_ready(new) and past_reboot(new)
+def should_reboot(status, metadata, **_):
+    return is_not_ready(status) and past_reboot(metadata)
 
 
 # Node went offline
@@ -42,7 +43,13 @@ def should_reboot(new, **_):
     when=is_not_ready,
 )
 def node_went_offline(name, **kwargs):
-    logging.info(f'Node {name} just went offline')
+    logging.info(f"Node {name} just went offline")
+
+    patch = {
+        "metadata": {"annotations": {reboot_scheduled_annotation: str(time.time())}}
+    }
+
+    return
 
 
 # Node came back online
@@ -51,8 +58,10 @@ def node_went_offline(name, **kwargs):
     annotations={reboot_scheduled_annotation: kopf.PRESENT},
     when=is_ready,
 )
-def node_back_online(**kwargs):
-    pass
+def node_back_online(patch, **kwargs):
+    patch = {"metadata": {"annotations": {reboot_scheduled_annotation: None}}}
+
+    return
 
 
 # If we need to do a reboot (we might need a daemon to trigger this one)
