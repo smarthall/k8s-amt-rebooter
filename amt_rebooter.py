@@ -5,11 +5,15 @@ import kopf
 import amt.client
 import amt.wsman
 import yaml
+from kubernetes import client
 
 
-config_filename = 'config.yaml'
+config_filename = "config.yaml"
 reboot_scheduled_annotation = "me.danielhall.amt-rebooter/reboot-at"
+reboot_count_annotation = "me.danielhall.amt-rebooter/reboot-count"
 failed_node_timeout_seconds = 300
+max_reboot_count = 5
+reboot_backoff_seconds = 60
 
 
 def is_ready(status, **_):
@@ -44,16 +48,17 @@ def get_reboot_time(metadata):
     return float(time_string)
 
 
-def should_reboot(metadata):
-    return get_reboot_time(metadata) < time.time()
+def should_reboot(metadata, attempts):
+    return get_reboot_time(metadata) < time.time() and attempts < max_reboot_count
 
 
 def lookup_node_config(name):
     config = {}
-    with open(config_filename, 'r') as f:
+    with open(config_filename, "r") as f:
         config = yaml.safe_load(f)
-    
+
     return config.get(name, None)
+
 
 def reboot_node(name):
     node_config = lookup_node_config(name)
@@ -62,21 +67,28 @@ def reboot_node(name):
         logging.info(f'Could not find "{name}" in configuration, ignoring...')
         return
 
-    if len({'address', 'password', 'username'}.intersection(set(node_config.keys()))) != 3:
+    if (
+        len({"address", "password", "username"}.intersection(set(node_config.keys())))
+        != 3
+    ):
         logging.error(f'Invalid configuration for node "{name}", ignoring...')
         return
 
-    client = amt.client.Client(node_config.get('address'), node_config.get('password'), node_config.get('username'))
+    client = amt.client.Client(
+        node_config.get("address"),
+        node_config.get("password"),
+        node_config.get("username"),
+    )
 
     power_state = client.power_status()
-    if power_state != '2':
+    if power_state != "2":
         friendly_power_state = amt.wsman.friendly_power_state(power_state)
-        logging.warn(f'Node "{name}" found in unexpected power state "{friendly_power_state}", not rebooting...')
+        logging.warn(
+            f'Node "{name}" found in unexpected power state "{friendly_power_state}", not rebooting...'
+        )
         return
 
     client.power_cycle()
-
-    logging.info(f"Node {name} has been power cycled")
 
 
 @kopf.on.startup()
@@ -95,7 +107,8 @@ def node_went_offline(name, patch, **kwargs):
 
     patch["metadata"] = {
         "annotations": {
-            reboot_scheduled_annotation: str(time.time() + failed_node_timeout_seconds)
+            reboot_scheduled_annotation: str(time.time() + failed_node_timeout_seconds),
+            reboot_count_annotation: str(0),
         }
     }
 
@@ -111,7 +124,12 @@ def node_went_offline(name, patch, **kwargs):
 def node_back_online(name, patch, **kwargs):
     logging.info(f"Node {name} came back online")
 
-    patch["metadata"] = {"annotations": {reboot_scheduled_annotation: None}}
+    patch["metadata"] = {
+        "annotations": {
+            reboot_scheduled_annotation: None,
+            reboot_count_annotation: None,
+        }
+    }
 
     return
 
@@ -124,8 +142,30 @@ def node_back_online(name, patch, **kwargs):
 )
 def node_pending_reboot(name, body, stopped, meta, **kwargs):
     while not stopped:
-        if should_reboot(meta):
+        attempts = int(meta.get("annotations", {}).get(reboot_count_annotation, 0))
+
+        if should_reboot(meta, attempts):
             reboot_node(name, body)
-            # TODO: Don't trigger the reboot repetitively
+
+            attempts += 1
+
+            api = client.CoreV1Api()
+            api.patch_node(
+                name,
+                {
+                    "metadata": {
+                        "annotations": {
+                            reboot_scheduled_annotation: str(
+                                time.time()
+                                + failed_node_timeout_seconds
+                                + (reboot_backoff_seconds * attempts)
+                            ),
+                            reboot_count_annotation: attempts,
+                        }
+                    }
+                },
+            )
+
+            logging.info(f"Node {name} has been power cycled, attempt {attempts}")
 
         stopped.wait(1)
