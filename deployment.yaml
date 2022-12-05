@@ -93,27 +93,6 @@ subjects:
   - kind: ServiceAccount
     name: default
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  namespace: amt-rebooter
-  name: amt-rebooter-config
-data:
-  config: |
-    ---
-    talos-192-168-70-20:
-      address: 192.168.71.20
-      username: admin
-      password: Kub3Rul3$
-    talos-192-168-70-21:
-      address: 192.168.71.21
-      username: admin
-      password: Kub3Rul3$
-    talos-192-168-70-22:
-      address: 192.168.71.22
-      username: admin
-      password: Kub3Rul3$
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
