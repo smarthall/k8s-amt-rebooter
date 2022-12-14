@@ -11,7 +11,7 @@ from kubernetes import client
 config_filename = "config.yaml"
 reboot_scheduled_annotation = "me.danielhall.amt-rebooter/reboot-at"
 reboot_count_annotation = "me.danielhall.amt-rebooter/reboot-count"
-failed_node_timeout_seconds = 300
+failed_node_timeout_seconds = 120
 max_reboot_count = 5
 reboot_backoff_seconds = 60
 
