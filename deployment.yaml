@@ -110,7 +110,7 @@ spec:
     spec:
       containers:
       - name: operator
-        image: ghcr.io/smarthall/k8s-amt-rebooter:v1.0.0
+        image: ghcr.io/smarthall/k8s-amt-rebooter:v1.1.0
         resources:
           requests:
             cpu: "0.01"
