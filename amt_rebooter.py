@@ -145,11 +145,11 @@ def node_pending_reboot(name, body, stopped, meta, **kwargs):
         attempts = int(meta.get("annotations", {}).get(reboot_count_annotation, 0))
 
         if should_reboot(meta, attempts):
+            api = client.CoreV1Api()
             try:
                 reboot_node(name)
             except Exception as e:
                 attempts += 1
-                api = client.CoreV1Api()
                 api.patch_node(
                     name,
                     {
